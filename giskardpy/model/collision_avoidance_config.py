@@ -44,7 +44,7 @@ class CollisionAvoidanceConfig(abc.ABC):
                                  'roslaunch giskardpy collision_matrix_tool.launch')
 
     def _create_collision_checker(self, collision_checker: CollisionCheckerLib):
-        if collision_checker not in CollisionCheckerLib:
+        if collision_checker.value not in CollisionCheckerLib._value2member_map_:
             raise KeyError(f'Unknown collision checker {collision_checker}. '
                            f'Collision avoidance is disabled')
         if collision_checker == CollisionCheckerLib.bpb:

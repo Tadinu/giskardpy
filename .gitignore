@@ -5,6 +5,8 @@ data/
 test/tmp_data/
 bin/
 lib/
+test/tmp*
+*.pdf
 msg_gen/
 srv_gen/
 msg/*Action.msg

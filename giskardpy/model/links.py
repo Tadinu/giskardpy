@@ -64,7 +64,7 @@ class LinkGeometry:
     def is_big(self, volume_threshold: float = 1.001e-6, surface_threshold: float = 0.00061) -> bool:
         return False
 
-
+IAI_PR2_DIR="/media/ducthan/376b23a1-5a02-4960-b3ca-24b2fcef8f891/2_GISKARD/iai_pr2/"
 class MeshGeometry(LinkGeometry):
     def __init__(self,
                  file_name: str,
@@ -72,6 +72,7 @@ class MeshGeometry(LinkGeometry):
                  color: Optional[ColorRGBA] = None,
                  scale: Optional[Tuple[float, float, float]] = None):
         super().__init__(link_T_geometry, color)
+        file_name=file_name.replace("package://", IAI_PR2_DIR)
         self._file_name_ros_iris = file_name
         self.set_collision_file_name(self.file_name_absolute)
         resolved_file_name = get_middleware().resolve_iri(file_name)

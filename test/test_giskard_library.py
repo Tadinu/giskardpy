@@ -14,7 +14,7 @@ from giskardpy.model.joints import OmniDrive, PrismaticJoint
 from giskardpy.model.links import Link, BoxGeometry
 from giskardpy.model.utils import hacky_urdf_parser_fix
 from giskardpy.model.world import WorldTree
-from giskardpy.model.world_config import EmptyWorld, WorldWithOmniDriveRobot
+from giskardpy.model.world_config import EmptyWorld, WorldWithFixedRobot, WorldWithOmniDriveRobot
 from giskardpy.qp.qp_controller_config import QPControllerConfig
 from giskardpy.user_interface import GiskardWrapper
 from giskardpy.utils.utils import suppress_stderr
@@ -191,13 +191,14 @@ def box_world():
 
 @pytest.fixture()
 def simple_two_arm_world() -> WorldTree:
-    urdf = open('urdfs/simple_two_arm_robot.urdf', 'r').read()
-    config = WorldWithOmniDriveRobot(urdf)
+    config = WorldWithFixedRobot(joint_limits={Derivatives.position: 0.5})
+    config.set_default_limits(new_limits={Derivatives.position: 0.5})
     with config.world.modify_world():
-        config.setup()
+        config.setup(robot_description=open('urdfs/simple_two_arm_robot.urdf', 'r').read(),
+                     robot_name='simple_two_arm_robot')
     config.world.register_controlled_joints(config.world.movable_joint_names)
-    collision_avoidance = DefaultCollisionAvoidanceConfig()
-    collision_avoidance.setup()
+    #collision_avoidance = DefaultCollisionAvoidanceConfig()
+    #collision_avoidance.setup()
     return config.world
 
 
@@ -254,7 +255,7 @@ class TestWorld:
         simple_two_arm_world.state[PrefixName('l_joint_1', 'muh')].position = 0.2
         simple_two_arm_world.state[PrefixName('l_joint_2', 'muh')].position = 0.2
         simple_two_arm_world.state[PrefixName('l_joint_3', 'muh')].position = 0.2
-        visualize()
+        #visualize()
 
     def test_compute_fk(self, box_world_prismatic: WorldTree):
         joint_name = box_world_prismatic.joint_names[0]
@@ -556,6 +557,8 @@ class TestController:
                                                     start_condition=g1)
         giskard_pr2.monitors.add_end_motion(start_condition=g2)
         giskard_pr2.execute()
+                              jerk_limit=2500,
+                              alpha=0.1,
 
     def test_cart_goal(self, giskard_pr2: GiskardWrapper):
         init = 'init'

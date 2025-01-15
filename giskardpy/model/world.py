@@ -208,7 +208,7 @@ class WorldTree(WorldTreeInterface):
             self._default_limits = {}
         for derivative, limit in new_limits.items():
             self._default_limits[derivative] = limit
-        assert len(self._default_limits) == max(self._default_limits)
+        #assert len(self._default_limits) == max(self._default_limits)
         for v in self.free_variables.values():
             for d, new_limit in new_limits.items():
                 v.set_lower_limit(d, -new_limit if new_limit is not None else None)

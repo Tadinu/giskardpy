@@ -97,7 +97,7 @@ class QPSolverQPSwift(QPSWIFTFormatter):
     @profile
     def solver_call(self, H: np.ndarray, g: np.ndarray, E: sp.csc_matrix, b: np.ndarray, A: sp.csc_matrix,
                     h: np.ndarray) -> np.ndarray:
-        result = qpSWIFT.run_sparse(c=g, h=h, P=H, G=A, A=E, b=b, opts=self.opts)
+        result = qpSWIFT.run(c=g, h=h, P=H, G=np.array(A.toarray()), A=E.toarray(), b=b, opts=self.opts)
         exit_flag = result['basicInfo']['ExitFlag']
         if exit_flag != 0:
             error_code = QPSWIFTExitFlags(exit_flag)
@@ -198,7 +198,7 @@ class QPSolverQPSwift(QPSWIFTFormatter):
     def problem_data_to_qp_format(self) \
             -> Tuple[sp.csc_matrix, np.ndarray, sp.csc_matrix, np.ndarray, sp.csc_matrix, np.ndarray]:
         H = sp.diags(self.weights, offsets=0, format='csc')
-        if np.product(self.nA_A.shape) > 0:
+        if np.prod(self.nA_A.shape) > 0:
             A = sp.vstack((self.nAi_Ai, self.nA_A))
         else:
             A = self.nAi_Ai

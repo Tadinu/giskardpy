@@ -30,7 +30,12 @@ class SymbolManager(metaclass=SingletonMeta):
 
     def resolve_symbols(self, symbols):
         try:
-            return np.array([self.symbol_str_to_lambda[s]() for s in symbols], dtype=float)
+            res = []
+            for s in symbols:
+                self.get_symbol(s)
+                t = self.symbol_str_to_lambda[s]()
+                res.append(self.evaluate_expr(t) if isinstance(t, cas.Expression) else float(t))
+            return np.array(res)
         except Exception as e:
             for s in symbols:
                 try:

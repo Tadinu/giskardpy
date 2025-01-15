@@ -22,7 +22,7 @@ from giskardpy.model.links import Link, BoxGeometry
 from giskardpy.model.trajectory import Trajectory
 from giskardpy.model.utils import hacky_urdf_parser_fix
 from giskardpy.model.world import WorldTree
-from giskardpy.model.world_config import EmptyWorld, WorldWithOmniDriveRobot
+from giskardpy.model.world_config import EmptyWorld, WorldWithFixedRobot, WorldWithOmniDriveRobot
 from giskardpy.motion_statechart.monitors.cartesian_monitors import PoseReached
 from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList
 from giskardpy.qp.constraint import EqualityConstraint, InequalityConstraint, DerivativeInequalityConstraint
@@ -208,12 +208,13 @@ def box_world():
 
 @pytest.fixture()
 def simple_two_arm_world() -> WorldTree:
-    config = WorldWithOmniDriveRobot()
-    urdf = open('urdfs/simple_two_arm_robot.urdf', 'r').read()
-    config.setup(urdf, 'muh')
+    config = WorldWithFixedRobot(joint_limits={Derivatives.position: 0.5})
+    config.set_default_limits(new_limits={Derivatives.position: 0.5})
+    config.setup(robot_description=open('urdfs/simple_two_arm_robot.urdf', 'r').read(),
+                 robot_name='simple_two_arm_robot')
     config.world.register_controlled_joints(config.world.movable_joint_names)
-    collision_avoidance = DefaultCollisionAvoidanceConfig()
-    collision_avoidance.setup()
+    #collision_avoidance = DefaultCollisionAvoidanceConfig()
+    #collision_avoidance.setup()
     return config.world
 
 
@@ -282,7 +283,7 @@ class TestWorld:
         simple_two_arm_world.state[PrefixName('l_joint_1', 'muh')].position = 0.2
         simple_two_arm_world.state[PrefixName('l_joint_2', 'muh')].position = 0.2
         simple_two_arm_world.state[PrefixName('l_joint_3', 'muh')].position = 0.2
-        visualize()
+        #visualize()
 
     def test_compute_fk(self, box_world_prismatic: WorldTree):
         joint_name = box_world_prismatic.joint_names[0]
@@ -715,8 +716,8 @@ class Simulator:
 
     def __init__(self, world: WorldTree, control_dt: float, mpc_dt: float, h: int, solver: SupportedQPSolver,
                  jerk_limit: float,
-                 alpha: float, graph_styles: Optional[List[Tuple[str, str]]],
-                 qp_formulation: QPFormulation):
+                 alpha: float, graph_styles: Optional[List[Tuple[str, str]]] = None,
+                 qp_formulation: QPFormulation=QPFormulation.implicit):
         # vel_limit = 1
         # if jerk_limit is None:
         #     jerk_limit = find_best_jerk_limit(h, mpc_dt, vel_limit)
@@ -1929,6 +1930,8 @@ class TestController:
                               control_dt=0.05,
                               mpc_dt=0.05,
                               h=9,
+                              jerk_limit=2500,
+                              alpha=0.1,
                               solver=SupportedQPSolver.qpSWIFT,
                               qp_formulation=QPFormulation.implicit)
         length = 50

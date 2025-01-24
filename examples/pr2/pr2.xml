@@ -463,4 +463,33 @@
             </body>
         </body>
     </worldbody>
+
+    <actuator>
+      <position name="rootx" joint="rootx"/>
+      <position name="rooty" joint="rooty"/>
+      <position name="rootwz" joint="rootwz"/>
+      <position name="torso_lift_joint" joint="torso_lift_joint"/>
+      <position name="r_shoulder_pan_joint" joint="r_shoulder_pan_joint"/>
+      <position name="r_shoulder_lift_joint" joint="r_shoulder_lift_joint"/>
+      <position name="r_upper_arm_roll_joint" joint="r_upper_arm_roll_joint"/>
+      <position name="r_elbow_flex_joint" joint="r_elbow_flex_joint"/>
+      <position name="r_forearm_roll_joint" joint="r_forearm_roll_joint"/>
+      <position name="r_wrist_flex_joint" joint="r_wrist_flex_joint"/>
+      <position name="r_wrist_roll_joint" joint="r_wrist_roll_joint"/>
+      <position name="r_gripper_l_finger_joint" joint="r_gripper_l_finger_joint"/>
+      <position name="r_gripper_l_finger_tip_joint" joint="r_gripper_l_finger_tip_joint"/>
+      <position name="r_gripper_r_finger_joint" joint="r_gripper_r_finger_joint"/>
+      <position name="r_gripper_r_finger_tip_joint" joint="r_gripper_r_finger_tip_joint"/>
+      <position name="l_shoulder_pan_joint" joint="l_shoulder_pan_joint"/>
+      <position name="l_shoulder_lift_joint" joint="l_shoulder_lift_joint"/>
+      <position name="l_upper_arm_roll_joint" joint="l_upper_arm_roll_joint"/>
+      <position name="l_elbow_flex_joint" joint="l_elbow_flex_joint"/>
+      <position name="l_forearm_roll_joint" joint="l_forearm_roll_joint"/>
+      <position name="l_wrist_flex_joint" joint="l_wrist_flex_joint"/>
+      <position name="l_wrist_roll_joint" joint="l_wrist_roll_joint"/>
+      <position name="l_gripper_l_finger_joint" joint="l_gripper_l_finger_joint"/>
+      <position name="l_gripper_l_finger_tip_joint" joint="l_gripper_l_finger_tip_joint"/>
+      <position name="l_gripper_r_finger_joint" joint="l_gripper_r_finger_joint"/>
+      <position name="l_gripper_r_finger_tip_joint" joint="l_gripper_r_finger_tip_joint"/>
+    </actuator>
 </mujoco>

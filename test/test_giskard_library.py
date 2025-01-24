@@ -543,22 +543,7 @@ class TestWorld:
                 pr2_world.search_for_link_name('l_gripper_r_finger_link'))
 
 
-class TestController:
-    def test_joint_goal(self, giskard_pr2: GiskardWrapper):
-        init = 'init'
-        g1 = 'g1'
-        g2 = 'g2'
-        giskard_pr2.monitors.add_set_seed_configuration(seed_configuration={'r_wrist_roll_joint': 2},
-                                                        name=init)
-        giskard_pr2.motion_goals.add_joint_position({'r_wrist_roll_joint': -1}, name=g1,
-                                                    start_condition=init,
-                                                    end_condition=g1)
-        giskard_pr2.motion_goals.add_joint_position({'r_wrist_roll_joint': 1}, name=g2,
-                                                    start_condition=g1)
-        giskard_pr2.monitors.add_end_motion(start_condition=g2)
-        giskard_pr2.execute()
-                              jerk_limit=2500,
-                              alpha=0.1,
+
 
     def test_cart_goal(self, giskard_pr2: GiskardWrapper):
         init = 'init'

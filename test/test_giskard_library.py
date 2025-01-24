@@ -1765,7 +1765,8 @@ class TestController:
                               control_dt=0.05,
                               mpc_dt=0.05,
                               h=9,
-                              solver=SupportedQPSolver.qpSWIFT,
+                              jerk_limit=2500,
+                              solver=SupportedQPSolver.qpalm,
                               alpha=.1,
                               qp_formulation=QPFormulation.implicit)
         joint_names = pr2_world.movable_joint_names[:1]
@@ -1788,7 +1789,7 @@ class TestController:
                 simulator.step()
                 simulator.apply_noise(0, 0.1, 0, joint_names)
                 goal = np.sin(god_map.time * 8) * 0.5
-                simulator.update_goal(goal)
+                simulator.update_goal("goal", goal, 1)
                 # goal = np.random.rand() * 2 -1
                 # simulator.update_joint_goal(goal)
                 # if god_map.time > next_swap:
@@ -1801,7 +1802,8 @@ class TestController:
             print(e)
             assert False
         finally:
-            simulator.plot_traj()
+            #simulator.plot_traj()
+            pass
         # print(f'min pos {min(simulator.traj.to_dict()[0][pr2_world.movable_joint_names[0]])}')
         # print(f'max vel {min(simulator.traj.to_dict()[1][pr2_world.movable_joint_names[0]])}')
 

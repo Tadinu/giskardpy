@@ -73,6 +73,9 @@ def rpy_from_matrix(rotation_matrix: np.ndarray) -> Tuple[float, float, float]:
 def rpy_from_quaternion(qx: float, qy: float, qz: float, qw: float) -> Tuple[float, float, float]:
     return rpy_from_matrix(rotation_matrix_from_quaternion(qx, qy, qz, qw))
 
+def rpy_from_mj_quaternion(quat: list[float]) -> Tuple[float, float, float]:
+    return rpy_from_matrix(rotation_matrix_from_quaternion(quat[1], quat[2], quat[3], quat[0]))
+
 
 def rotation_matrix_from_rpy(roll: float, pitch: float, yaw: float) -> np.ndarray:
     """

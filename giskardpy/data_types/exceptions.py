@@ -43,6 +43,8 @@ class EmptyProblemException(InfeasibleException, DontPrintStackTrace):
 class WorldException(GiskardException):
     pass
 
+class InvalidWorldDescriptionException(WorldException, KeyError):
+    pass
 
 class UnknownGroupException(WorldException, KeyError):
     pass
@@ -71,6 +73,8 @@ class CorruptMeshException(CorruptShapeException):
 class CorruptURDFException(CorruptShapeException):
     pass
 
+class CorruptMJCFException(CorruptShapeException):
+    pass
 
 class TransformException(WorldException):
     pass

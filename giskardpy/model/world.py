@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import abc
 import hashlib
 from abc import ABC
@@ -12,13 +13,14 @@ from xml.etree.ElementTree import ParseError
 
 import numpy as np
 import urdf_parser_py.urdf as up
+import mujoco as mj
 
 import giskardpy.utils.math as mymath
 from giskardpy import casadi_wrapper as cas
 from giskardpy.casadi_wrapper import CompiledFunction
 from giskardpy.data_types.data_types import JointStates, ColorRGBA
 from giskardpy.data_types.exceptions import DuplicateNameException, UnknownGroupException, UnknownLinkException, \
-    WorldException, UnknownJointException, CorruptURDFException
+    WorldException, UnknownJointException, CorruptURDFException, CorruptMJCFException
 from giskardpy.model.joints import Joint, FixedJoint, PrismaticJoint, RevoluteJoint, OmniDrive, DiffDrive, \
     VirtualFreeVariables, MovableJoint, Joint6DOF, OneDofJoint
 from giskardpy.model.links import Link
@@ -28,7 +30,7 @@ from giskardpy.qp.free_variable import FreeVariable
 from giskardpy.qp.next_command import NextCommands
 from giskardpy.symbol_manager import symbol_manager
 from giskardpy.middleware import get_middleware
-from giskardpy.utils.utils import suppress_stderr, clear_cached_properties
+from giskardpy.utils.utils import suppress_stderr, clear_cached_properties, mj_name
 from giskardpy.utils.decorators import memoize, copy_memoize, clear_memo
 from line_profiler import profile
 
@@ -680,6 +682,110 @@ class WorldTree(WorldTreeInterface):
             raise WorldException(f'Failed to add urdf \'{group_name}\' to world')
 
         self.register_group(group_name, urdf_root_link_name_prefixed, actuated=actuated)
+
+    @modifies_world
+    @profile
+    def add_mjcf(self,
+                 mjcf: str,
+                 mjcf_model_dir: Optional[str] = None,
+                 group_name: Optional[str] = None,
+                 parent_link_name: Optional[PrefixName] = None,
+                 pose: Optional[cas.TransMatrix] = None,
+                 actuated: bool = False):
+        """
+        Add a mjcf to the world at parent_link_name and create a SubWorldTree named group_name for it.
+        :param mjcf: either mjcf as xml string or path to mjcf/xml file
+        :param mjcf_model_dir: path of the directory containing the mjcf file if mjcf is a file path
+        :param group_name: name of the group that will be created. default is name in mjcf.
+        :param parent_link_name: where the mjcf will be attached
+        :param actuated: if the mjcf is controlled by Giskard, important for self collision avoidance
+        """
+        with suppress_stderr():
+            try:
+                is_mjcf_file = mjcf.endswith('.mjcf') or mjcf.endswith('.xml')
+                mj_model: mj.MjModel = mj.MjModel.from_xml_path(mjcf) if is_mjcf_file \
+                    else mj.MjModel.from_xml_string(mjcf)
+                mj_model_dir = os.path.dirname(mjcf) if is_mjcf_file else mjcf_model_dir
+            except Exception as e:
+                raise CorruptMJCFException(str(e))
+        if group_name is None:
+            group_name = mj_name(mj_model.names[0:])
+        if group_name in self.groups:
+            raise DuplicateNameException(
+                f'Failed to add group \'{group_name}\' because one with such a name already exists')
+
+        mj_root_link_name = mj.mj_id2name(mj_model, mj.mjtObj.mjOBJ_BODY, 1)
+        mj_root_link_name_prefixed = PrefixName(mj_root_link_name, group_name)
+
+        if parent_link_name is not None:
+            mj_root_link = Link.from_mjcf(mj_model, link_id=1,
+                                          prefix=group_name,
+                                          color=self.default_link_color,
+                                          mj_model_dir=mj_model_dir)
+            self.add_link(mj_root_link)
+            joint = Joint6DOF(name=PrefixName(group_name, self.connection_prefix),
+                              parent_link_name=parent_link_name,
+                              child_link_name=mj_root_link.name)
+            joint.update_transform(pose)
+            self.add_joint(joint)
+        else:
+            mj_root_link = Link.from_mjcf(mj_model, link_id=1,
+                                          prefix=group_name,
+                                          color=self.default_link_color,
+                                          mj_model_dir=mj_model_dir)
+            self.add_link(mj_root_link)
+
+        def get_child_bodies_ids(mj_model: mj.MjModel, parent_body_id: int):
+            return np.where(mj_model.body_parentid == parent_body_id)[0].tolist()
+
+        def mjcf_recursive_parser(mj_model: mj.MjModel, parent_link: Link):
+            parent_link_name = parent_link.name.short_name
+            parent_link_body_id = mj.mj_name2id(mj_model, mj.mjtObj.mjOBJ_BODY, parent_link_name)
+            child_links_body_ids = get_child_bodies_ids(mj_model, parent_link_body_id)
+            if (parent_link_body_id < 0) or not child_links_body_ids:
+                return  # stop because link has no child links
+
+            for child_link_id in child_links_body_ids:
+                # add link
+                child_link_name = mj.mj_id2name(mj_model, mj.mjtObj.mjOBJ_BODY, child_link_id)
+                link_id = mj.mj_name2id(mj_model, mj.mjtObj.mjOBJ_BODY, child_link_name)
+                child_link = Link.from_mjcf(mj_model, link_id=link_id,
+                                            prefix=group_name,
+                                            color=self.default_link_color,
+                                            mj_model_dir=mj_model_dir)
+                self.add_link(child_link)
+
+                # add joint
+                child_joint_id = mj_model.body_jntadr[child_link_id]
+                if child_joint_id == -1:
+                    translation_offset = mj_model.body_pos[child_link_id]
+                    rotation_offset = mymath.rpy_from_mj_quaternion(mj_model.body_quat[child_link_id])
+                    child_joint = FixedJoint(name=PrefixName(f'{child_link_name}_fixed', group_name),
+                                             parent_link_name=PrefixName(parent_link_name, group_name),
+                                             child_link_name=child_link_name,
+                                             parent_T_child=cas.TransMatrix.from_xyz_rpy(x=translation_offset[0],
+                                                                                         y=translation_offset[1],
+                                                                                         z=translation_offset[2],
+                                                                                         roll=rotation_offset[0],
+                                                                                         pitch=rotation_offset[1],
+                                                                                         yaw=rotation_offset[2]))
+                else:
+                    child_joint = Joint.from_mjcf(mj_model, child_joint_id, prefix=group_name)
+                if not isinstance(child_joint, FixedJoint):
+                    for derivative, limit in self.default_limits.items():
+                        child_joint.free_variable.set_lower_limit(derivative, -limit if limit is not None else None)
+                        child_joint.free_variable.set_upper_limit(derivative, limit)
+                self.add_joint(joint)
+
+                mjcf_recursive_parser(mj_model, child_link)
+
+        number_of_links_before = len(self.links)
+        mjcf_recursive_parser(mj_model, mj_root_link)
+        excluded_links_num = 2 # world + root link
+        if number_of_links_before + mj_model.nbody - 2 != len(self.links):
+            raise WorldException(f'Failed to add mjcf \'{group_name}\' to world')
+
+        self.register_group(group_name, mj_root_link_name_prefixed, actuated=actuated)
 
     @modifies_world
     def add_fixed_joint(self, parent_link: Link, child_link: Link, joint_name: Optional[PrefixName] = None,

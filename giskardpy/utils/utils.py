@@ -261,3 +261,6 @@ def quote_node_names(condition: str) -> str:
                 trailing = token[len(token.rstrip()):]
                 result.append(f'{leading}"{stripped}"{trailing}')
     return ''.join(result)
+
+def mj_name(name):
+    return name.decode('utf-8').split('\x00', 1)[0]

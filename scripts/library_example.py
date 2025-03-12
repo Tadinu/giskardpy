@@ -1,8 +1,11 @@
+import qpalm
+
 from giskardpy.data_types.data_types import PrefixName
 from giskardpy.model.collision_avoidance_config import DisableCollisionAvoidanceConfig
 from giskardpy.model.trajectory import Trajectory
-from giskardpy.model.world_config import WorldWithOmniDriveRobot
+from giskardpy.model.world_config import WorldWithOmniDriveRobot, MujocoWorld
 from giskardpy.qp.qp_controller_config import QPControllerConfig
+from giskardpy.qp.qp_solver_ids import SupportedQPSolver
 from giskardpy.user_interface import GiskardWrapper
 import giskardpy.casadi_wrapper as cas
 
@@ -34,16 +37,18 @@ def execute_cart_goal(giskard: GiskardWrapper) -> Trajectory:
     return giskard.execute(sim_time=20)
 
 
-def execute_joint_goal(giskard: GiskardWrapper) -> Trajectory:
+def execute_joint_goal(giskard: GiskardWrapper, joint_name: str) -> Trajectory:
     init = 'init'
     g1 = 'g1'
     g2 = 'g2'
-    giskard.monitors.add_set_seed_configuration(seed_configuration={'joint_2': 2},
+    group_name = giskard.world_config.robot_group_name
+    joint_fullname = f'{group_name}/{joint_name}' if group_name not in joint_name else joint_name
+    giskard.monitors.add_set_seed_configuration(seed_configuration={joint_fullname: 2},
                                                     name=init)
-    giskard.motion_goals.add_joint_position({'joint_2': -1}, name=g1,
+    giskard.motion_goals.add_joint_position({joint_fullname: -1}, name=g1,
                                                 start_condition=init,
                                                 end_condition=g1)
-    giskard.motion_goals.add_joint_position({'joint_2': 1}, name=g2,
+    giskard.motion_goals.add_joint_position({joint_fullname: 1}, name=g2,
                                                 start_condition=g1)
     giskard.monitors.add_end_motion(start_condition=g2)
     return giskard.execute()
@@ -51,8 +56,14 @@ def execute_joint_goal(giskard: GiskardWrapper) -> Trajectory:
 
 if __name__ == '__main__':
     urdf = open('../test/urdfs/simple_7_dof_arm.urdf', 'r').read()
-    giskard = GiskardWrapper(world_config=WorldWithOmniDriveRobot(urdf=urdf),
+    giskard = GiskardWrapper(world_config=WorldWithOmniDriveRobot(desc=urdf),
                              collision_avoidance_config=DisableCollisionAvoidanceConfig(),
-                             qp_controller_config=QPControllerConfig())
+                             qp_controller_config=QPControllerConfig(qp_solver=SupportedQPSolver.qpalm))
     print(execute_cart_goal(giskard))
-    print(execute_joint_goal(giskard))
+    print(execute_joint_goal(giskard, 'joint_2'))
+
+    giskard = GiskardWrapper(world_config=MujocoWorld(mjcf_path='../examples/kuka_iiwa_14/iiwa14.xml'),
+                             collision_avoidance_config=DisableCollisionAvoidanceConfig(),
+                             qp_controller_config=QPControllerConfig(qp_solver=SupportedQPSolver.qpalm))
+    print(execute_joint_goal(giskard, 'joint2'))
+

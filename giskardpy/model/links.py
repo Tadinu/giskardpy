@@ -4,12 +4,16 @@ import os
 from typing import List, Optional, Union, Tuple, Callable
 
 import urdf_parser_py.urdf as up
+import mujoco as mj
+from mujoco import mjtObj
+import xml.etree.ElementTree as ET
 
 from giskardpy.data_types.exceptions import CorruptMeshException
 from giskardpy.middleware import get_middleware
 from giskardpy.model.utils import cube_volume, cube_surface, sphere_volume, cylinder_volume, cylinder_surface
 from giskardpy.data_types.data_types import PrefixName, ColorRGBA
-from giskardpy.utils.utils import get_file_hash
+from giskardpy.utils.math import rpy_from_mj_quaternion
+from giskardpy.utils.utils import get_file_hash, mj_name
 import giskardpy.casadi_wrapper as cas
 
 
@@ -59,6 +63,42 @@ class LinkGeometry:
                                       color=color)
         else:
             raise NotImplementedError(f'{type(urdf_geometry)} geometry is not supported')
+        return geometry
+
+    @classmethod
+    def from_mjcf(cls, mj_model: mj.MjModel, geom_id: int, color: ColorRGBA, mj_model_dir: str) -> LinkGeometry:
+        xyz = mj_model.geom_pos[geom_id]
+        rpy = rpy_from_mj_quaternion(mj_model.geom_quat[geom_id])
+        link_T_geometry = cas.TransMatrix.from_xyz_rpy(0, 0, 0, rpy[0], rpy[1], rpy[2])
+        link_T_geometry[0, 3] = xyz[0]
+        link_T_geometry[1, 3] = xyz[1]
+        link_T_geometry[2, 3] = xyz[2]
+        geom_type = mj_model.geom_type[geom_id]
+        if geom_type == mj.mjtGeom.mjGEOM_MESH:
+            mesh_id = mj_model.geom_dataid[geom_id]
+            mesh_name_start = mj_model.name_meshadr[mesh_id]
+            mesh_name = mj_name(mj_model.names[mesh_name_start:])
+            mesh_file_path = f"{os.path.join(mj_model_dir, 'assets', mesh_name)}.obj" # TBD: HARDCODED FOR NOW
+            geometry = MeshGeometry(link_T_geometry=link_T_geometry,
+                                    file_name=mesh_file_path,
+                                    color=color)
+        elif geom_type == mj.mjtGeom.mjGEOM_BOX:
+            geometry = BoxGeometry(link_T_geometry=link_T_geometry,
+                                   depth=mj_model.geom_size[geom_id, 0],
+                                   width=mj_model.geom_size[geom_id, 1],
+                                   height=mj_model.geom_size[geom_id, 2],
+                                   color=color)
+        elif geom_type == mj.mjtGeom.mjGEOM_CYLINDER:
+            geometry = CylinderGeometry(link_T_geometry=link_T_geometry,
+                                        height=mj_model.geom_size[geom_id, 0],
+                                        radius=mj_model.geom_size[geom_id, 1],
+                                        color=color)
+        elif geom_type == mj.mjtGeom.mjGEOM_SPHERE:
+            geometry = SphereGeometry(link_T_geometry=link_T_geometry,
+                                      radius=mj_model.geom_size[geom_id, 0],
+                                      color=color)
+        else:
+            raise NotImplementedError(f'{type(geom_type)} geometry is not supported')
         return geometry
 
     def is_big(self, volume_threshold: float = 1.001e-6, surface_threshold: float = 0.00061) -> bool:
@@ -199,6 +239,19 @@ class Link:
         for urdf_visual in urdf_link.visuals:
             link.visuals.append(LinkGeometry.from_urdf(urdf_thing=urdf_visual,
                                                        color=color))
+        return link
+
+    @classmethod
+    def from_mjcf(cls, mj_model: mj.MjModel, link_id: int, prefix: str, color: ColorRGBA, mj_model_dir: str) -> Link:
+        link_name = PrefixName(mj.mj_id2name(mj_model, mj.mjtObj.mjOBJ_BODY, link_id), prefix)
+        link = cls(link_name)
+        for i in range(mj_model.body_geomnum[link_id]):
+            geom_id = mj_model.body_geomadr[link_id] + i
+            if mj_model.geom_contype[geom_id] > 0 or mj_model.geom_conaffinity[geom_id] > 0:
+                link.collisions.append(LinkGeometry.from_mjcf(mj_model, geom_id,
+                                                              color=color, mj_model_dir=mj_model_dir))
+            link.visuals.append(LinkGeometry.from_mjcf(mj_model, geom_id,
+                                                       color=color, mj_model_dir=mj_model_dir))
         return link
 
     def dye_collisions(self, color: ColorRGBA) -> None:

@@ -7,12 +7,14 @@ from typing import Tuple, Optional, List, Union, Type
 
 import numpy as np
 import urdf_parser_py.urdf as up
+import mujoco as mj
 
 import giskardpy.casadi_wrapper as cas
 from giskardpy.data_types.data_types import derivative_map, PrefixName, Derivatives
 from giskardpy.god_map import god_map
 from giskardpy.qp.free_variable import FreeVariable
 from giskardpy.symbol_manager import symbol_manager
+from giskardpy.utils.math import rpy_from_mj_quaternion
 from line_profiler import profile
 
 from giskardpy.utils.decorators import memoize
@@ -130,6 +132,75 @@ def urdf_to_joint(urdf_joint: up.Joint, prefix: str) \
                        multiplier=multiplier,
                        offset=offset)
 
+def mjcf_joint_to_class(mj_model: mj.MjModel, joint_id: int) -> Union[Type[FixedJoint], Type[RevoluteJoint], Type[PrismaticJoint]]:
+    if joint_id == -1:
+        return FixedJoint
+    joint_type = mj_model.jnt_type[joint_id]
+    joint_name = mj.mj_id2name(mj_model, mj.mjtObj.mjOBJ_JOINT, joint_id)
+    if joint_type == mj.mjtJoint.mjJNT_SLIDE:
+        joint_class = PrismaticJoint
+    elif joint_type == mj.mjtJoint.mjJNT_HINGE:
+        # if 'caster_rotation' in urdf_joint.name:
+        #     joint_class = PR2CasterJoint
+        # else:
+        joint_class = RevoluteJoint
+    elif joint_type == mj.mjtJoint.mjJNT_FREE:
+        joint_class = Joint6DOF
+    else:
+        raise NotImplementedError(
+            f'Joint type \'{joint_type}\' of \'{joint_name}\' is not implemented.')
+    return joint_class
+
+
+def mjcf_joint_to_limits(mj_model: mj.MjModel, joint_id: int) -> Tuple[derivative_map, derivative_map]:
+    lower_limits = {}
+    upper_limits = {}
+    lower_limits[Derivatives.position] = mj_model.jnt_range[joint_id, 0]
+    upper_limits[Derivatives.position] = mj_model.jnt_range[joint_id, 1]
+    return lower_limits, upper_limits
+
+def mjcf_to_joint(mj_model: mj.MjModel, joint_id: int, prefix: str) \
+        -> Union[FixedJoint, RevoluteJoint, PrismaticJoint]:
+    assert (joint_id > -1), f'{prefix}: joint_id must be >=0'
+    joint_class = mjcf_joint_to_class(mj_model, joint_id)
+    joint_body_id = mj_model.jnt_bodyid[joint_id] if (joint_id > -1) else -1
+    if joint_body_id >= 0:
+        translation_offset = mj_model.body_pos[joint_body_id]
+        rotation_offset = rpy_from_mj_quaternion(mj_model.body_quat[joint_body_id])
+    else:
+        translation_offset = None
+        rotation_offset = None
+    if translation_offset is None:
+        translation_offset = [0, 0, 0]
+    if rotation_offset is None:
+        rotation_offset = [0, 0, 0]
+    parent_T_child = cas.TransMatrix.from_xyz_rpy(x=translation_offset[0],
+                                                  y=translation_offset[1],
+                                                  z=translation_offset[2],
+                                                  roll=rotation_offset[0],
+                                                  pitch=rotation_offset[1],
+                                                  yaw=rotation_offset[2])
+
+    joint_name = PrefixName(mj.mj_id2name(mj_model, mj.mjtObj.mjOBJ_JOINT, joint_id), prefix)
+    child_link_body_id = mj_model.jnt_bodyid[joint_id]
+    parent_link_name = PrefixName(mj.mj_id2name(mj_model, mj.mjtObj.mjOBJ_BODY,
+                                                mj_model.body_parentid[child_link_body_id]), prefix)
+    child_link_name = PrefixName(mj.mj_id2name(mj_model, mj.mjtObj.mjOBJ_BODY, child_link_body_id), prefix)
+
+    free_variable_name = joint_name
+    lower_limits, upper_limits = mjcf_joint_to_limits(mj_model, joint_id)
+
+    return joint_class(name=joint_name,
+                       free_variable_name=free_variable_name,
+                       parent_link_name=parent_link_name,
+                       child_link_name=child_link_name,
+                       parent_T_child=parent_T_child,
+                       axis=mj_model.jnt_axis[joint_id],
+                       lower_limits=lower_limits,
+                       upper_limits=upper_limits,
+                       multiplier=1.,
+                       offset=0)
+
 
 class Joint(ABC):
     name: PrefixName
@@ -146,6 +217,10 @@ class Joint(ABC):
     @classmethod
     def from_urdf(cls, urdf_joint: up.Joint, prefix: str) -> Union[FixedJoint, RevoluteJoint, PrismaticJoint]:
         return urdf_to_joint(urdf_joint, prefix)
+
+    @classmethod
+    def from_mjcf(cls, mj_model:mj.MjModel, joint_id: int, prefix: str) -> Union[FixedJoint, RevoluteJoint, PrismaticJoint]:
+        return mjcf_to_joint(mj_model, joint_id, prefix)
 
     @memoize
     def parent_T_child_as_pos_quaternion(self) -> cas.Expression:

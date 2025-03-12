@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import abc
 from abc import ABC
 from typing import Dict, Optional, Union
@@ -9,8 +10,9 @@ import numpy as np
 from giskardpy.god_map import god_map
 from giskardpy.model.joints import FixedJoint, OmniDrive, DiffDrive, Joint6DOF, OneDofJoint
 from giskardpy.model.links import Link
-from giskardpy.model.utils import robot_name_from_urdf_string
+from giskardpy.model.utils import robot_name_from_urdf_string, robot_name_from_mjcf_string
 from giskardpy.model.world import WorldTree
+from giskardpy.data_types.exceptions import InvalidWorldDescriptionException
 from giskardpy.data_types.data_types import my_string, PrefixName, Derivatives, derivative_map, ColorRGBA
 import giskardpy.casadi_wrapper as cas
 
@@ -94,6 +96,18 @@ class WorldConfig(ABC):
         """
         self.world.update_default_limits(new_limits)
 
+    def add_robot_from_file(self, description_filepath, group_name: Optional[str] = None) -> str:
+        file_path = os.path.abspath(description_filepath)
+        if not os.path.isfile(file_path):
+            raise InvalidWorldDescriptionException(f'{file_path} does not exist')
+        file_content = open(file_path, 'r').read()
+        if file_path.endswith('.urdf'):
+            return self.add_robot_urdf(file_content, group_name)
+        elif file_path.endswith('.xml') or file_path.endswith('.mjcf'):
+            return self.add_robot_mjcf(file_path, group_name)
+        else:
+            raise InvalidWorldDescriptionException(f'{os.path.splitext(file_path)[1]} extension is not supported')
+
     def add_robot_urdf(self,
                        urdf: str,
                        group_name: Optional[str] = None) -> str:
@@ -105,6 +119,20 @@ class WorldConfig(ABC):
         if group_name is None:
             group_name = robot_name_from_urdf_string(urdf)
         self.world.add_urdf(urdf=urdf, group_name=group_name, actuated=True)
+        return group_name
+
+    def add_robot_mjcf(self,
+                       mjcf: str,
+                       mjcf_model_dir: Optional[str] = None,
+                       group_name: Optional[str] = None) -> str:
+        """
+        Add a robot mjcf to the world.
+        :param mjcf: either mjcf as xml string or path to mjcf/xml file
+        :param mjcf_model_dir: path of the directory containing the mjcf file if mjcf is a file path
+        :param group_name:
+        """
+        self.world.add_mjcf(mjcf, mjcf_model_dir,
+                            group_name=group_name, actuated=True)
         return group_name
 
     def add_fixed_joint(self, parent_link: my_string, child_link: my_string,
@@ -214,6 +242,18 @@ class EmptyWorld(WorldConfig):
         self.add_empty_link(PrefixName('map'))
 
 
+class MujocoWorld(WorldConfig):
+    def __init__(self, mjcf_path: str, joint_limits: Dict[Derivatives, float] = None):
+        super().__init__()
+        self.mjcf_path = mjcf_path
+        self._joint_limits = joint_limits
+
+    def setup(self, robot_name: Optional[str] = None):
+        self.set_default_limits({Derivatives.velocity: 1,
+                                 Derivatives.acceleration: np.inf,
+                                 Derivatives.jerk: None})
+        self.add_robot_from_file(self.mjcf_path)
+
 class WorldWithFixedRobot(WorldConfig):
     def __init__(self,
                  urdf: str,
@@ -239,13 +279,15 @@ class WorldWithOmniDriveRobot(WorldConfig):
     drive_joint_name: str
 
     def __init__(self,
-                 urdf: str,
+                 desc: str,
+                 is_urdf: bool = True,
                  map_name: str = 'map',
                  localization_joint_name: str = 'localization',
                  odom_link_name: str = 'odom',
                  drive_joint_name: str = 'brumbrum'):
         super().__init__()
-        self.urdf = urdf
+        self.desc = desc
+        self.is_urdf = is_urdf
         self.map_name = map_name
         self.localization_joint_name = localization_joint_name
         self.odom_link_name = odom_link_name
@@ -259,7 +301,10 @@ class WorldWithOmniDriveRobot(WorldConfig):
         self.add_empty_link(PrefixName(self.odom_link_name))
         self.add_6dof_joint(parent_link=self.map_name, child_link=self.odom_link_name,
                             joint_name=self.localization_joint_name)
-        self.add_robot_urdf(self.urdf, robot_name)
+        if self.is_urdf:
+            self.add_robot_urdf(self.desc, robot_name)
+        else:
+            self.add_robot_mjcf(self.desc, group_name=robot_name)
         root_link_name = self.get_root_link_of_group(self.robot_group_name)
         self.add_omni_drive_joint(name=self.drive_joint_name,
                                   parent_link_name=self.odom_link_name,
@@ -284,13 +329,15 @@ class WorldWithDiffDriveRobot(WorldConfig):
     drive_joint_name: str
 
     def __init__(self,
-                 urdf: str,
+                 desc: str,
+                 is_urdf: bool = True,
                  map_name: str = 'map',
                  localization_joint_name: str = 'localization',
                  odom_link_name: str = 'odom',
                  drive_joint_name: str = 'brumbrum'):
         super().__init__()
-        self.robot_description = urdf
+        self.robot_description = desc
+        self.is_urdf = is_urdf
         self.map_name = map_name
         self.localization_joint_name = localization_joint_name
         self.odom_link_name = odom_link_name
@@ -304,7 +351,10 @@ class WorldWithDiffDriveRobot(WorldConfig):
         self.add_empty_link(PrefixName(self.odom_link_name))
         self.add_6dof_joint(parent_link=self.map_name, child_link=self.odom_link_name,
                             joint_name=self.localization_joint_name)
-        self.add_robot_urdf(urdf=self.robot_description)
+        if self.is_urdf:
+            self.add_robot_urdf(urdf=self.robot_description)
+        else:
+            self.add_robot_mjcf(mjcf=self.robot_description)
         root_link_name = self.get_root_link_of_group(self.robot_group_name)
         self.add_diff_drive_joint(name=self.drive_joint_name,
                                   parent_link_name=self.odom_link_name,

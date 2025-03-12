@@ -33,17 +33,17 @@ from giskardpy.symbol_manager import symbol_manager
 from giskardpy.utils.utils import suppress_stderr
 from giskardpy.model.collision_avoidance_config import CollisionAvoidanceConfig
 from giskardpy.model.collision_world_syncer import CollisionCheckerLib
-from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPoseAsTask, CartesianPosition, CartesianPositionVelocityGoal
+from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPose
 from giskardpy.motion_statechart.tasks.joint_tasks import JointVelocity
 from giskardpy.motion_statechart.tasks.task import WEIGHT_BELOW_CA, WEIGHT_COLLISION_AVOIDANCE
 from giskardpy.qp.constraint import DerivativeEqualityConstraint
 from giskardpy.utils.math import limit
 from test.utils_for_tests import pr2_urdf
-from test.test_giskard_library import Simulator
+from giskardpy.user_interface import GiskardWrapper
 
 import mujoco
 
-class MuJoCoSim(Simulator):
+class MuJoCoSim(GiskardWrapper):
     def __init__(self, model: mujoco.MjModel,
                  data: mujoco.MjData,
                  world: WorldTree, control_dt: float, mpc_dt: float, h: int, solver: SupportedQPSolver,

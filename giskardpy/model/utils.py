@@ -7,6 +7,8 @@ import numpy as np
 def robot_name_from_urdf_string(urdf_string):
     return urdf_string.split('robot name="')[1].split('"')[0]
 
+def robot_name_from_mjcf_string(mjcf_string):
+    return mjcf_string.split('mujoco model="')[1].split('"')[0]
 
 def hacky_urdf_parser_fix(urdf: str, blacklist: Tuple[str] = ('transmission', 'gazebo')) -> str:
     # Parse input string
